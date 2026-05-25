@@ -119,9 +119,12 @@ Unlike regular skip indexes, which use a default index granularity of 1, vector 
 This value makes sure that only few indexes are build internally even for large parts.
 We recommend changing the index granularity only for advanced users who understand the implications of what they are doing (see [below](#differences-to-regular-skipping-indexes)).
 
-Vector similarity indexes are generic in the sense that they can accommodate different approximate search method.
+Vector similarity indexes are generic in the sense that they can accommodate different approximate search methods.
 The actually used method is specified by parameter `<type>`.
-As of now, the only available method is HNSW ([academic paper](https://arxiv.org/abs/1603.09320)), a popular and state-of-the-art technique for approximate vector search based on hierarchical proximity graphs.
+Available methods are:
+- `hnsw` ([academic paper](https://arxiv.org/abs/1603.09320)), a popular technique for approximate vector search based on hierarchical proximity graphs.
+- `ivf`, a bulk-built partitioned quantized index. It clusters vectors inside each `MergeTree` index granule, stores compact `i8` residuals with per-dimension scales, and probes a small number of partitions during search. This method is designed for high-ingest `MergeTree` workloads where building a graph for every new part or merge is too expensive.
+
 If HNSW is used as type, users may optionally specify further HNSW-specific parameters:
 
 ```sql
@@ -142,6 +145,25 @@ These HNSW-specific parameters are available:
 
 The default values of all HNSW-specific parameters work reasonably well in the majority of use cases.
 We therefore do not recommend customizing the HNSW-specific parameters.
+
+If `ivf` is used as type, users may optionally specify further IVF-specific parameters:
+
+```sql
+CREATE TABLE table
+(
+  [...],
+  vectors Array(Float*),
+  INDEX index_name vectors TYPE vector_similarity('ivf', <distance_function>, <dimensions>[, 'i8', <partition_count>, <probe_count>]) [GRANULARITY N]
+)
+ENGINE = MergeTree
+ORDER BY [...]
+```
+
+These IVF-specific parameters are available:
+- `<partition_count>` controls the number of coarse partitions trained for each index granule. Value `0` means choosing the value automatically based on the number of vectors. Explicit values must not exceed `4096`.
+- `<probe_count>` controls how many partitions are searched for each query. Value `0` means choosing the value automatically based on the number of partitions. Explicit values must not exceed `4096`, and must not exceed `<partition_count>` when `<partition_count>` is not `0`. Higher values improve recall at the cost of more distance computations. If the probed partitions contain fewer rows than the query `LIMIT`, ClickHouse probes more partitions until it has enough candidates or exhausts the index granule.
+
+IVF currently supports only `i8` quantization. For `Array(Float64)` columns and query vectors, values must be representable as `Float32`.
 
 Further restrictions apply:
 - Vector similarity indexes can only be build on columns of type [Array(Float32)](../../../sql-reference/data-types/array.md), [Array(Float64)](../../../sql-reference/data-types/array.md), or [Array(BFloat16)](../../../sql-reference/data-types/array.md). Arrays of nullable and low-cardinality floats such as `Array(Nullable(Float32))` and `Array(LowCardinality(Float32))` are not allowed.

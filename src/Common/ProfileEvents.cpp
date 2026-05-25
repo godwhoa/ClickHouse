@@ -581,6 +581,12 @@ The server successfully detected this situation and will download merged part fr
     M(USearchSearchCount, "Number of search operations performed in usearch indexes.", ValueType::Number) \
     M(USearchSearchVisitedMembers, "Number of nodes visited when searching in usearch indexes.", ValueType::Number) \
     M(USearchSearchComputedDistances, "Number of times distance was computed when searching usearch indexes.", ValueType::Number) \
+    M(IVFBuildCount, "Number of IVF vector similarity indexes built.", ValueType::Number) \
+    M(IVFBuildRows, "Number of vectors added to IVF vector similarity indexes.", ValueType::Number) \
+    M(IVFBuildComputedDistances, "Number of times distance was computed when building IVF vector similarity indexes.", ValueType::Number) \
+    M(IVFSearchCount, "Number of search operations performed in IVF vector similarity indexes.", ValueType::Number) \
+    M(IVFSearchProbes, "Number of partitions probed when searching IVF vector similarity indexes.", ValueType::Number) \
+    M(IVFSearchComputedDistances, "Number of times distance was computed when searching IVF vector similarity indexes.", ValueType::Number) \
     \
     M(RWLockAcquiredReadLocks, "Number of times a read lock was acquired (in a heavy RWLock).", ValueType::Number) \
     M(RWLockAcquiredWriteLocks, "Number of times a write lock was acquired (in a heavy RWLock).", ValueType::Number) \

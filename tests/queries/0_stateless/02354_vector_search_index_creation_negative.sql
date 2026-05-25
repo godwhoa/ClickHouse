@@ -12,7 +12,7 @@ CREATE TABLE tab(vec Array(Float32), INDEX idx vec TYPE vector_similarity('cant'
 CREATE TABLE tab(vec Array(Float32), INDEX idx vec TYPE vector_similarity('cant', 'have', 'five', 'args', '!', '!')) ENGINE = MergeTree ORDER BY tuple(); -- { serverError INCORRECT_QUERY }
 CREATE TABLE tab(vec Array(Float32), INDEX idx vec TYPE vector_similarity('cant', 'have', 'seven', 'args', '!', '!', '!')) ENGINE = MergeTree ORDER BY tuple(); -- { serverError INCORRECT_QUERY }
 
-SELECT '1st argument (method) must be String and hnsw';
+SELECT '1st argument (method) must be String and hnsw or ivf';
 CREATE TABLE tab(vec Array(Float32), INDEX idx vec TYPE vector_similarity(3, 'L2Distance', 1)) ENGINE = MergeTree ORDER BY tuple(); -- { serverError INCORRECT_QUERY }
 CREATE TABLE tab(vec Array(Float32), INDEX idx vec TYPE vector_similarity('not_hnsw', 'L2Distance', 1)) ENGINE = MergeTree ORDER BY tuple(); -- { serverError INCORRECT_DATA }
 

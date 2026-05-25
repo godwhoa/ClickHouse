@@ -30,9 +30,50 @@ struct UsearchHnswParams
     size_t expansion_add = default_expansion_add;
 };
 
+/// Parameters for the bulk-built partitioned quantized index.
+struct PartitionedQuantizedParams
+{
+    /// 0 means choose automatically from the number of rows in the granule.
+    size_t partitions = 0;
+    /// 0 means choose automatically from the number of partitions.
+    size_t probes = 0;
+};
+
+enum class VectorSimilarityIndexMethod : uint8_t
+{
+    HNSW = 1,
+    IVF = 2,
+};
+
+struct VectorSimilarityIndexParams
+{
+    VectorSimilarityIndexMethod method = VectorSimilarityIndexMethod::HNSW;
+    unum::usearch::metric_kind_t metric_kind = unum::usearch::metric_kind_t::l2sq_k;
+    unum::usearch::scalar_kind_t scalar_kind = unum::usearch::scalar_kind_t::bf16_k;
+    UsearchHnswParams hnsw;
+    PartitionedQuantizedParams ivf;
+};
+
+class IVectorSimilarityIndexWithSerialization
+{
+public:
+    virtual ~IVectorSimilarityIndexWithSerialization() = default;
+
+    virtual void serialize(WriteBuffer & ostr) const = 0;
+    virtual void deserialize(ReadBuffer & istr) = 0;
+    virtual NearestNeighbours search(const std::vector<Float64> & reference_vector, size_t limit, bool return_distances, size_t expansion_search) const = 0;
+
+    virtual size_t dimensions() const = 0;
+    virtual size_t size() const = 0;
+    virtual size_t memoryUsageBytes() const = 0;
+    virtual String statisticsString() const = 0;
+};
+
+using VectorSimilarityIndexWithSerializationPtr = std::shared_ptr<IVectorSimilarityIndexWithSerialization>;
+
 using USearchIndex = unum::usearch::index_dense_t;
 
-class USearchIndexWithSerialization : public USearchIndex
+class USearchIndexWithSerialization : public USearchIndex, public IVectorSimilarityIndexWithSerialization
 {
     using Base = USearchIndex;
 
@@ -43,8 +84,9 @@ public:
         unum::usearch::scalar_kind_t scalar_kind,
         UsearchHnswParams usearch_hnsw_params);
 
-    void serialize(WriteBuffer & ostr) const;
-    void deserialize(ReadBuffer & istr);
+    void serialize(WriteBuffer & ostr) const override;
+    void deserialize(ReadBuffer & istr) override;
+    NearestNeighbours search(const std::vector<Float64> & reference_vector, size_t limit, bool return_distances, size_t expansion_search) const override;
 
     struct Statistics
     {
@@ -66,26 +108,65 @@ public:
 
     Statistics getStatistics() const;
 
-    size_t memoryUsageBytes() const;
+    size_t dimensions() const override { return Base::dimensions(); }
+    size_t size() const override { return Base::size(); }
+    size_t memoryUsageBytes() const override;
+    String statisticsString() const override { return getStatistics().toString(); }
+
+private:
+    unum::usearch::metric_kind_t metric_kind;
 };
 
 using USearchIndexWithSerializationPtr = std::shared_ptr<USearchIndexWithSerialization>;
+
+class PartitionedQuantizedIndexWithSerialization final : public IVectorSimilarityIndexWithSerialization
+{
+public:
+    PartitionedQuantizedIndexWithSerialization(
+        size_t dimensions_arg,
+        unum::usearch::metric_kind_t metric_kind_,
+        PartitionedQuantizedParams params_);
+
+    void build(std::vector<Float32> && vectors_);
+
+    void serialize(WriteBuffer & ostr) const override;
+    void deserialize(ReadBuffer & istr) override;
+    NearestNeighbours search(const std::vector<Float64> & reference_vector, size_t limit, bool return_distances, size_t expansion_search) const override;
+
+    size_t dimensions() const override { return dimensions_; }
+    size_t size() const override { return row_count; }
+    size_t memoryUsageBytes() const override;
+    String statisticsString() const override;
+
+private:
+    size_t choosePartitions(size_t rows) const;
+    size_t chooseProbes(size_t partitions_) const;
+
+    size_t dimensions_;
+    unum::usearch::metric_kind_t metric_kind;
+    PartitionedQuantizedParams params;
+
+    size_t row_count = 0;
+    size_t partition_count = 0;
+    size_t probe_count = 0;
+    std::vector<Float32> centroids;
+    std::vector<Float32> partition_dimension_scales;
+    std::vector<UInt32> partition_offsets;
+    std::vector<UInt32> row_ids;
+    std::vector<Int8> quantized_vectors;
+};
 
 
 struct MergeTreeIndexGranuleVectorSimilarity final : public IMergeTreeIndexGranule
 {
     MergeTreeIndexGranuleVectorSimilarity(
         const String & index_name_,
-        unum::usearch::metric_kind_t metric_kind_,
-        unum::usearch::scalar_kind_t scalar_kind_,
-        UsearchHnswParams usearch_hnsw_params_);
+        VectorSimilarityIndexParams params_);
 
     MergeTreeIndexGranuleVectorSimilarity(
         const String & index_name_,
-        unum::usearch::metric_kind_t metric_kind_,
-        unum::usearch::scalar_kind_t scalar_kind_,
-        UsearchHnswParams usearch_hnsw_params_,
-        USearchIndexWithSerializationPtr index_);
+        VectorSimilarityIndexParams params_,
+        VectorSimilarityIndexWithSerializationPtr index_);
 
     ~MergeTreeIndexGranuleVectorSimilarity() override = default;
 
@@ -94,13 +175,11 @@ struct MergeTreeIndexGranuleVectorSimilarity final : public IMergeTreeIndexGranu
 
     bool empty() const override { return !index || index->size() == 0; }
 
-    size_t memoryUsageBytes() const override { return index->memoryUsageBytes(); }
+    size_t memoryUsageBytes() const override { return index ? index->memoryUsageBytes() : 0; }
 
     const String index_name;
-    const unum::usearch::metric_kind_t metric_kind;
-    const unum::usearch::scalar_kind_t scalar_kind;
-    const UsearchHnswParams usearch_hnsw_params;
-    USearchIndexWithSerializationPtr index;
+    const VectorSimilarityIndexParams params;
+    VectorSimilarityIndexWithSerializationPtr index;
 
     LoggerPtr logger = getLogger("VectorSimilarityIndex");
 
@@ -109,7 +188,7 @@ private:
     /// Note: USearch prefixes the serialized data with its own version header. We can't rely on that because 1. the index in ClickHouse
     /// is (at least in theory) agnostic of specific vector search libraries, and 2. additional data (e.g. the number of dimensions)
     /// outside USearch exists which we should version separately.
-    static constexpr UInt64 FILE_FORMAT_VERSION = 1;
+    static constexpr UInt64 FILE_FORMAT_VERSION = 3;
 };
 
 
@@ -119,23 +198,25 @@ struct MergeTreeIndexAggregatorVectorSimilarity final : IMergeTreeIndexAggregato
         const String & index_name_,
         const Block & index_sample_block,
         UInt64 dimensions_,
-        unum::usearch::metric_kind_t metric_kind_,
-        unum::usearch::scalar_kind_t scalar_kind_,
-        UsearchHnswParams usearch_hnsw_params_);
+        VectorSimilarityIndexParams params_);
 
     ~MergeTreeIndexAggregatorVectorSimilarity() override = default;
 
-    bool empty() const override { return !index || index->size() == 0; }
+    bool empty() const override
+    {
+        if (params.method == VectorSimilarityIndexMethod::HNSW)
+            return !index || index->size() == 0;
+        return pending_vectors.empty();
+    }
     MergeTreeIndexGranulePtr getGranuleAndReset() override;
     void update(const Block & block, size_t * pos, size_t limit) override;
 
     const String index_name;
     const Block index_sample_block;
     const UInt64 dimensions;
-    const unum::usearch::metric_kind_t metric_kind;
-    const unum::usearch::scalar_kind_t scalar_kind;
-    const UsearchHnswParams usearch_hnsw_params;
+    const VectorSimilarityIndexParams params;
     USearchIndexWithSerializationPtr index;
+    std::vector<Float32> pending_vectors;
 };
 
 
@@ -145,7 +226,7 @@ public:
     explicit MergeTreeIndexConditionVectorSimilarity(
         const std::optional<VectorSearchParameters> & parameters_,
         const String & index_column_,
-        unum::usearch::metric_kind_t metric_kind_,
+        VectorSimilarityIndexParams params_,
         ContextPtr context);
 
     ~MergeTreeIndexConditionVectorSimilarity() override = default;
@@ -158,7 +239,7 @@ public:
 private:
     std::optional<VectorSearchParameters> parameters;
     const String index_column;
-    const unum::usearch::metric_kind_t metric_kind;
+    const VectorSimilarityIndexParams params;
     const size_t expansion_search;
     const float index_fetch_multiplier;
     const size_t max_limit;
@@ -172,9 +253,7 @@ public:
     MergeTreeIndexVectorSimilarity(
         const IndexDescription & index_,
         UInt64 dimensions_,
-        unum::usearch::metric_kind_t metric_kind_,
-        unum::usearch::scalar_kind_t scalar_kind_,
-        UsearchHnswParams usearch_hnsw_params_);
+        VectorSimilarityIndexParams params_);
 
     ~MergeTreeIndexVectorSimilarity() override = default;
 
@@ -186,9 +265,7 @@ public:
 
 private:
     const UInt64 dimensions;
-    const unum::usearch::metric_kind_t metric_kind;
-    const unum::usearch::scalar_kind_t scalar_kind;
-    const UsearchHnswParams usearch_hnsw_params;
+    const VectorSimilarityIndexParams params;
 };
 
 }
