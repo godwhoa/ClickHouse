@@ -24,6 +24,7 @@ struct NearestNeighbours
 {
     std::vector<UInt64> rows;
     std::optional<std::vector<float>> distances;
+    Float32 default_distance = 999999.99f;
 };
 
 }

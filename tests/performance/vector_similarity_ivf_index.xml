@@ -1,0 +1,319 @@
+<test>
+    <settings>
+        <enable_analyzer>1</enable_analyzer>
+        <query_plan_optimize_lazy_materialization>0</query_plan_optimize_lazy_materialization>
+        <use_skip_indexes_for_top_k>0</use_skip_indexes_for_top_k>
+        <use_top_k_dynamic_filtering>0</use_top_k_dynamic_filtering>
+        <vector_search_with_rescoring>0</vector_search_with_rescoring>
+    </settings>
+
+    <create_query>
+        CREATE TABLE vector_similarity_src
+        (
+            id UInt64,
+            vec Array(Float32)
+        )
+        ENGINE = Memory
+    </create_query>
+
+    <fill_query>
+        INSERT INTO vector_similarity_src
+        SELECT
+            number,
+            arrayMap(i -> toFloat32(sin(number * 0.017 + i * 0.31) + cos(number * 0.005 + i * 0.13)), range(16))
+        FROM numbers(100000)
+    </fill_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_src_128
+        (
+            id UInt64,
+            vec Array(Float32)
+        )
+        ENGINE = Memory
+    </create_query>
+
+    <fill_query>
+        INSERT INTO vector_similarity_src_128
+        SELECT
+            number,
+            arrayMap(i -> toFloat32(sin(number * 0.013 + i * 0.19) + cos(number * 0.007 + i * 0.11)), range(128))
+        FROM numbers(50000)
+    </fill_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_src_hash64
+        (
+            id UInt64,
+            vec Array(Float32)
+        )
+        ENGINE = Memory
+    </create_query>
+
+    <fill_query>
+        INSERT INTO vector_similarity_src_hash64
+        SELECT
+            number,
+            arrayMap(i -> toFloat32((reinterpretAsUInt64(sipHash64(number, i)) % 10000) / 5000.0 - 1.0), range(64))
+        FROM numbers(20000)
+    </fill_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_hnsw
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('hnsw', 'L2Distance', 16) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_ivf
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('ivf', 'L2Distance', 16, 'i8', 64, 8) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_hnsw_cosine
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('hnsw', 'cosineDistance', 16) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_ivf_cosine
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('ivf', 'cosineDistance', 16, 'i8', 64, 8) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_hnsw_128
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('hnsw', 'L2Distance', 128) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_ivf_128
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('ivf', 'L2Distance', 128, 'i8', 128, 16) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_hnsw_hash64
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('hnsw', 'L2Distance', 64) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_ivf_hash64
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('ivf', 'L2Distance', 64, 'i8', 128, 32) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_hnsw_merge
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('hnsw', 'L2Distance', 16) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <create_query>
+        CREATE TABLE vector_similarity_ivf_merge
+        (
+            id UInt64,
+            vec Array(Float32),
+            INDEX idx vec TYPE vector_similarity('ivf', 'L2Distance', 16, 'i8', 64, 8) GRANULARITY 100000000
+        )
+        ENGINE = MergeTree
+        ORDER BY id
+        SETTINGS index_granularity = 8192
+    </create_query>
+
+    <query tag="insert_hnsw">INSERT INTO vector_similarity_hnsw SELECT * FROM vector_similarity_src</query>
+    <query tag="insert_ivf">INSERT INTO vector_similarity_ivf SELECT * FROM vector_similarity_src</query>
+    <query tag="insert_hnsw_cosine">INSERT INTO vector_similarity_hnsw_cosine SELECT * FROM vector_similarity_src</query>
+    <query tag="insert_ivf_cosine">INSERT INTO vector_similarity_ivf_cosine SELECT * FROM vector_similarity_src</query>
+    <query tag="insert_hnsw_128">INSERT INTO vector_similarity_hnsw_128 SELECT * FROM vector_similarity_src_128</query>
+    <query tag="insert_ivf_128">INSERT INTO vector_similarity_ivf_128 SELECT * FROM vector_similarity_src_128</query>
+    <query tag="insert_hnsw_hash64">INSERT INTO vector_similarity_hnsw_hash64 SELECT * FROM vector_similarity_src_hash64</query>
+    <query tag="insert_ivf_hash64">INSERT INTO vector_similarity_ivf_hash64 SELECT * FROM vector_similarity_src_hash64</query>
+
+    <query tag="search_hnsw">
+        WITH arrayMap(i -> toFloat32(sin(12345 * 0.017 + i * 0.31) + cos(12345 * 0.005 + i * 0.13)), range(16)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_hnsw
+        ORDER BY L2Distance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="search_ivf">
+        WITH arrayMap(i -> toFloat32(sin(12345 * 0.017 + i * 0.31) + cos(12345 * 0.005 + i * 0.13)), range(16)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_ivf
+        ORDER BY L2Distance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="validate_ivf_recall">
+        WITH
+            arrayMap(i -> toFloat32(sin(12345 * 0.017 + i * 0.31) + cos(12345 * 0.005 + i * 0.13)), range(16)) AS reference_vec,
+            (
+                SELECT groupArray(id)
+                FROM
+                (
+                    SELECT id
+                    FROM vector_similarity_ivf
+                    ORDER BY L2Distance(vec, reference_vec)
+                    LIMIT 10
+                    SETTINGS ignore_data_skipping_indices = 'idx'
+                )
+            ) AS exact_ids,
+            (
+                SELECT groupArray(id)
+                FROM
+                (
+                    SELECT id
+                    FROM vector_similarity_ivf
+                    ORDER BY L2Distance(vec, reference_vec)
+                    LIMIT 10
+                )
+            ) AS approx_ids
+        SELECT throwIf(length(arrayIntersect(exact_ids, approx_ids)) &lt; 8)
+        FORMAT Null
+    </query>
+
+    <query tag="validate_ivf_index_size">
+        SELECT throwIf(
+            (SELECT sum(data_compressed_bytes) FROM system.data_skipping_indices WHERE table = 'vector_similarity_ivf')
+            >=
+            (SELECT sum(data_compressed_bytes) FROM system.data_skipping_indices WHERE table = 'vector_similarity_hnsw'))
+        FORMAT Null
+    </query>
+
+    <query tag="search_hnsw_cosine">
+        WITH arrayMap(i -> toFloat32(sin(12345 * 0.017 + i * 0.31) + cos(12345 * 0.005 + i * 0.13)), range(16)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_hnsw_cosine
+        ORDER BY cosineDistance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="search_ivf_cosine">
+        WITH arrayMap(i -> toFloat32(sin(12345 * 0.017 + i * 0.31) + cos(12345 * 0.005 + i * 0.13)), range(16)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_ivf_cosine
+        ORDER BY cosineDistance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="search_hnsw_128">
+        WITH arrayMap(i -> toFloat32(sin(12345 * 0.013 + i * 0.19) + cos(12345 * 0.007 + i * 0.11)), range(128)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_hnsw_128
+        ORDER BY L2Distance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="search_ivf_128">
+        WITH arrayMap(i -> toFloat32(sin(12345 * 0.013 + i * 0.19) + cos(12345 * 0.007 + i * 0.11)), range(128)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_ivf_128
+        ORDER BY L2Distance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="search_hnsw_hash64">
+        WITH arrayMap(i -> toFloat32((reinterpretAsUInt64(sipHash64(20001, i)) % 10000) / 5000.0 - 1.0), range(64)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_hnsw_hash64
+        ORDER BY L2Distance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="search_ivf_hash64">
+        WITH arrayMap(i -> toFloat32((reinterpretAsUInt64(sipHash64(20001, i)) % 10000) / 5000.0 - 1.0), range(64)) AS reference_vec
+        SELECT id
+        FROM vector_similarity_ivf_hash64
+        ORDER BY L2Distance(vec, reference_vec)
+        LIMIT 10
+        FORMAT Null
+    </query>
+
+    <query tag="insert_hnsw_merge_first">INSERT INTO vector_similarity_hnsw_merge SELECT * FROM vector_similarity_src WHERE id &lt; 50000</query>
+    <query tag="insert_hnsw_merge_second">INSERT INTO vector_similarity_hnsw_merge SELECT * FROM vector_similarity_src WHERE id &gt;= 50000</query>
+    <query tag="merge_hnsw">OPTIMIZE TABLE vector_similarity_hnsw_merge FINAL</query>
+
+    <query tag="insert_ivf_merge_first">INSERT INTO vector_similarity_ivf_merge SELECT * FROM vector_similarity_src WHERE id &lt; 50000</query>
+    <query tag="insert_ivf_merge_second">INSERT INTO vector_similarity_ivf_merge SELECT * FROM vector_similarity_src WHERE id &gt;= 50000</query>
+    <query tag="merge_ivf">OPTIMIZE TABLE vector_similarity_ivf_merge FINAL</query>
+
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_hnsw</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_ivf</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_hnsw_cosine</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_ivf_cosine</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_hnsw_128</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_ivf_128</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_hnsw_hash64</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_ivf_hash64</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_hnsw_merge</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_ivf_merge</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_src_hash64</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_src_128</drop_query>
+    <drop_query>DROP TABLE IF EXISTS vector_similarity_src</drop_query>
+</test>

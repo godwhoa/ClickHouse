@@ -2003,6 +2003,8 @@ std::pair<MarkRanges, RangesInDataPartReadHints> MergeTreeDataSelectExecutor::fi
     MarkRanges res;
     size_t ranges_size = ranges.size();
     RangesInDataPartReadHints read_hints = in_read_hints;
+    if (index_helper->isVectorSimilarityIndex())
+        read_hints.vector_search_results.reset();
 
     auto create_update_partial_disjunction_result_fn = [&](size_t range_begin) -> KeyCondition::UpdatePartialDisjunctionResultFn
     {
@@ -2134,10 +2136,10 @@ std::pair<MarkRanges, RangesInDataPartReadHints> MergeTreeDataSelectExecutor::fi
 
                 if (index_helper->isVectorSimilarityIndex())
                 {
-                    read_hints.vector_search_results = condition->calculateApproximateNearestNeighbors(granule);
+                    auto vector_search_results = condition->calculateApproximateNearestNeighbors(granule);
 
                     /// We need to sort the result ranges ascendingly
-                    auto rows = read_hints.vector_search_results.value().rows;
+                    auto rows = vector_search_results.rows;
                     std::sort(rows.begin(), rows.end());
 #ifndef NDEBUG
                     /// Duplicates should in theory not be possible but better be safe than sorry ...
@@ -2145,8 +2147,28 @@ std::pair<MarkRanges, RangesInDataPartReadHints> MergeTreeDataSelectExecutor::fi
                     if (has_duplicates)
                         throw Exception(ErrorCodes::INCORRECT_DATA, "Usearch returned duplicate row numbers");
 #endif
-                    if (!(read_hints.vector_search_results.value().distances.has_value()))
-                        read_hints = {};
+                    if (!(vector_search_results.distances.has_value()))
+                        read_hints.vector_search_results.reset();
+                    else
+                    {
+                        if (!read_hints.vector_search_results)
+                            read_hints.vector_search_results.emplace();
+                        read_hints.vector_search_results->default_distance = vector_search_results.default_distance;
+                        if (!read_hints.vector_search_results->distances)
+                            read_hints.vector_search_results->distances.emplace();
+
+                        const auto & distances = vector_search_results.distances.value();
+                        chassert(vector_search_results.rows.size() == distances.size());
+
+                        /// Vector indexes return row offsets local to the skip-index granule. The reader-side
+                        /// `_distance` filter works with absolute `_part_offset` values, so convert before storing hints.
+                        const UInt64 first_part_offset = part->index_granularity->getMarkStartingRow(index_mark * skip_index_granularity);
+                        for (size_t result_pos = 0; result_pos != vector_search_results.rows.size(); ++result_pos)
+                        {
+                            read_hints.vector_search_results->rows.push_back(first_part_offset + vector_search_results.rows[result_pos]);
+                            read_hints.vector_search_results->distances->push_back(distances[result_pos]);
+                        }
+                    }
 
                     for (auto row : rows)
                     {

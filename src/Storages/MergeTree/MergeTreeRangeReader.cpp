@@ -1243,7 +1243,9 @@ void MergeTreeRangeReader::fillVirtualColumns(Columns & columns, ReadResult & re
 void MergeTreeRangeReader::fillDistanceColumnAndFilterForVectorSearch(Columns & columns, ReadResult & /*result*/, ColumnPtr & part_offsets_auto_column)
 {
     /// Populate the "_distance" virtual column from the distances we got from vector index
-    auto distance_column = ColumnFloat32::create(part_offsets_auto_column->size(), Float32(999999.99));
+    const auto & read_hints = merge_tree_reader->data_part_info_for_read->getReadHints();
+    const auto & offsets_and_distances = read_hints.vector_search_results.value();
+    auto distance_column = ColumnFloat32::create(part_offsets_auto_column->size(), offsets_and_distances.default_distance);
     ColumnFloat32::Container & distance_container = distance_column->getData();
     Float32 * distances = distance_container.data();
 
@@ -1251,8 +1253,6 @@ void MergeTreeRangeReader::fillDistanceColumnAndFilterForVectorSearch(Columns & 
     auto filter_data = ColumnUInt8::create(part_offsets_auto_column->size(), UInt8(0));
     IColumn::Filter & filter = filter_data->getData();
 
-    const auto & read_hints = merge_tree_reader->data_part_info_for_read->getReadHints();
-    const auto & offsets_and_distances = read_hints.vector_search_results.value();
     auto row_offsets_from_index = offsets_and_distances.rows;
     chassert(offsets_and_distances.distances.has_value());
     const auto distances_from_index = offsets_and_distances.distances.value();

@@ -1,0 +1,84 @@
+Create and query IVF index
+4
+5
+6
+4	0
+5	0.0095
+6	0.0414
+IVF rescoring
+4	0
+5	0.1
+6	0.2
+IVF rescoring fetch multiplier below one
+4
+1
+1
+Expression (Project names)
+  Limit (preliminary LIMIT)
+    Sorting (Sorting for ORDER BY)
+      Expression ((Before ORDER BY + (Projection + Change column names to column identifiers)))
+        ReadFromMergeTree (default.tab_ivf)
+        Indexes:
+          PrimaryKey
+            Condition: true
+            Parts: 1/1
+            Granules: 3/3
+          Skip
+            Name: idx
+            Description: vector_similarity GRANULARITY 100000000
+            Parts: 1/1
+            Granules: 1/3
+          Ranges: 1
+4
+After detach/attach
+4
+5
+6
+After merge
+12
+Automatic IVF parameters
+1
+2
+Automatic IVF partitions with explicit probes
+5
+Parallel IVF assignment
+1
+IVF recall overlap
+10
+Float64 IVF index
+1
+0
+BFloat16 IVF index
+2
+1
+Dot product IVF index
+1
+0
+1	2
+0	1
+1
+Multi-granule dot product IVF index
+63
+62
+61
+60
+59
+Materialized IVF index
+0
+1
+2
+3
+Zero vector IVF index
+0
+Low probe count fills LIMIT
+3
+Stable IVF ties
+[0,1,2,3]
+Multi-granule IVF index
+5
+5
+IVF with another matching vector index
+5
+Ordered IVF seeding
+248
+0
